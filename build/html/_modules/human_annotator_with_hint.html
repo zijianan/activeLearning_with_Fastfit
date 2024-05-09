@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>human_annotator_with_hint &#8212; test 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=61cd365c" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=12dfc556" />
+    <script src="../_static/documentation_options.js?v=2709fde1"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for human_annotator_with_hint</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">pigeonXT</span> <span class="k">as</span> <span class="nn">pixt</span>
+<span class="kn">from</span> <span class="nn">fastfit</span> <span class="kn">import</span> <span class="n">FastFitTrainer</span><span class="p">,</span> <span class="n">FastFit</span>
+<span class="kn">from</span> <span class="nn">datasets</span> <span class="kn">import</span> <span class="n">Dataset</span>
+<span class="kn">import</span> <span class="nn">mysql.connector</span>
+<span class="kn">from</span> <span class="nn">transformers</span> <span class="kn">import</span> <span class="n">AutoTokenizer</span><span class="p">,</span> <span class="n">pipeline</span>
+<span class="kn">from</span> <span class="nn">tqdm</span> <span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">from</span> <span class="nn">datasets</span> <span class="kn">import</span> <span class="n">DatasetDict</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">pigeonXT</span> <span class="k">as</span> <span class="nn">pixt</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Dict</span>
+<span class="kn">from</span> <span class="nn">jupyter_ui_poll</span> <span class="kn">import</span> <span class="n">ui_events</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">mysql.connector.connection</span> <span class="kn">import</span> <span class="n">MySQLConnection</span>
+<span class="kn">from</span> <span class="nn">mysql.connector.cursor</span> <span class="kn">import</span> <span class="n">MySQLCursor</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="c1"># Database handler for MySQL operations</span>
+<div class="viewcode-block" id="MySQLDataHandler">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.MySQLDataHandler">[docs]</a>
+<span class="k">class</span> <span class="nc">MySQLDataHandler</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">host</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">user</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">password</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">database</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">host</span> <span class="o">=</span> <span class="n">host</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user</span> <span class="o">=</span> <span class="n">user</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">password</span> <span class="o">=</span> <span class="n">password</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">database</span> <span class="o">=</span> <span class="n">database</span>
+
+<div class="viewcode-block" id="MySQLDataHandler.connect">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.MySQLDataHandler.connect">[docs]</a>
+    <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">MySQLCursor</span><span class="p">,</span> <span class="n">MySQLConnection</span><span class="p">]:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conn</span> <span class="o">=</span> <span class="n">mysql</span><span class="o">.</span><span class="n">connector</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span>
+            <span class="n">host</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">host</span><span class="p">,</span>
+            <span class="n">user</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="p">,</span>
+            <span class="n">password</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">,</span>
+            <span class="n">database</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">database</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">conn</span></div>
+
+
+<div class="viewcode-block" id="MySQLDataHandler.fetch_data">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.MySQLDataHandler.fetch_data">[docs]</a>
+    <span class="k">def</span> <span class="nf">fetch_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="n">cursor</span><span class="p">,</span> <span class="n">conn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="n">i</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">description</span><span class="p">])</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">df</span></div>
+</div>
+
+<span class="c1"># Annotation class for running in-notebook annotations using pigeonXT</span>
+<div class="viewcode-block" id="Annotation">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.Annotation">[docs]</a>
+<span class="k">class</span> <span class="nc">Annotation</span><span class="p">:</span>
+<div class="viewcode-block" id="Annotation.run_annotation">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.Annotation.run_annotation">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">run_annotation</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">column_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">pixt</span><span class="o">.</span><span class="n">annotate</span><span class="p">:</span>
+        <span class="c1"># This will only setup the annotation, and needs to be confirmed via UI interaction</span>
+        <span class="k">return</span> <span class="n">pixt</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">examples</span><span class="o">=</span><span class="n">df</span><span class="p">[[</span><span class="n">column_name</span><span class="p">]]</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="n">column_name</span><span class="p">:</span> <span class="s1">&#39;example&#39;</span><span class="p">}),</span>
+            <span class="n">options</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span>
+            <span class="n">task_type</span><span class="o">=</span><span class="s1">&#39;classification&#39;</span><span class="p">,</span>
+            <span class="n">buttons_in_a_row</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+            <span class="n">reset_buttons_after_click</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">include_next</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="ModelTraining">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.ModelTraining">[docs]</a>
+<span class="k">class</span> <span class="nc">ModelTraining</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dataset</span><span class="p">:</span> <span class="n">Dataset</span><span class="p">,</span> <span class="n">model_name_or_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">label_column_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text_column_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">save_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">num_train_epochs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">load_from_FastFit</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">tokenizer_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_name_or_path</span> <span class="o">=</span> <span class="n">model_name_or_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label_column_name</span> <span class="o">=</span> <span class="n">label_column_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">text_column_name</span> <span class="o">=</span> <span class="n">text_column_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">=</span> <span class="n">num_train_epochs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_from_FastFit</span> <span class="o">=</span> <span class="n">load_from_FastFit</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer_name</span> <span class="o">=</span> <span class="n">tokenizer_name</span>
+
+<div class="viewcode-block" id="ModelTraining.train_model">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.ModelTraining.train_model">[docs]</a>
+    <span class="k">def</span> <span class="nf">train_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FastFitTrainer</span><span class="p">:</span>
+        <span class="n">trainer</span> <span class="o">=</span> <span class="n">FastFitTrainer</span><span class="p">(</span>
+            <span class="n">model_name_or_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">,</span>
+            <span class="n">label_column_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">label_column_name</span><span class="p">,</span>
+            <span class="n">text_column_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">text_column_name</span><span class="p">,</span>
+            <span class="n">num_train_epochs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">num_train_epochs</span><span class="p">,</span>
+            <span class="n">per_device_train_batch_size</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+            <span class="n">per_device_eval_batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
+            <span class="n">max_text_length</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>
+            <span class="n">dataloader_drop_last</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">num_repeats</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="n">optim</span><span class="o">=</span><span class="s2">&quot;adafactor&quot;</span><span class="p">,</span>
+            <span class="n">clf_loss_factor</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+            <span class="n">fp16</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">dataset</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span>
+            <span class="n">load_from_FastFit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">load_from_FastFit</span><span class="p">,</span>
+            <span class="n">tokenizer_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer_name</span>
+        <span class="p">)</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">trainer</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">save_pretrained</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">trainer</span><span class="o">.</span><span class="n">evaluate</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Accuracy: </span><span class="si">{:.1f}</span><span class="s2">%&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;eval_accuracy&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">100</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">model</span></div>
+</div>
+
+<div class="viewcode-block" id="ActiveLearning">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.ActiveLearning">[docs]</a>
+<span class="k">class</span> <span class="nc">ActiveLearning</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Initialize the Active Learning class with all required parameters for setting up and performing the learning process.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    i : int</span>
+<span class="sd">        Number of active learning epochs.</span>
+<span class="sd">    theta : int</span>
+<span class="sd">        Number of data points to annotate per epoch.</span>
+<span class="sd">    model_name_or_path : str</span>
+<span class="sd">        Base path or name of the model to use.</span>
+<span class="sd">    label_column_name : str</span>
+<span class="sd">        Column name in the dataset that contains labels.</span>
+<span class="sd">    text_column_name : str</span>
+<span class="sd">        Column name in the dataset that contains text entries.</span>
+<span class="sd">    vali_data : Dataset</span>
+<span class="sd">        Previously annotated data for model performance assessment.</span>
+<span class="sd">    inference_datasets : Dataset</span>
+<span class="sd">        Dataset for inference using a previously trained base model.</span>
+<span class="sd">    uname : str</span>
+<span class="sd">        User name for tracking annotations.</span>
+<span class="sd">    tokenizer_name : str</span>
+<span class="sd">        Name of the tokenizer to be used with the model.</span>
+<span class="sd">    labels : List[str]</span>
+<span class="sd">        List of possible labels for annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">theta</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">model_name_or_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">label_column_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text_column_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">vali_data</span><span class="p">:</span> <span class="n">Dataset</span><span class="p">,</span> <span class="n">inference_datasets</span><span class="p">:</span> <span class="n">Dataset</span><span class="p">,</span> <span class="n">uname</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">tokenizer_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">=</span> <span class="n">i</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">theta</span> <span class="o">=</span> <span class="n">theta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_name_or_path</span> <span class="o">=</span> <span class="n">model_name_or_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label_column_name</span> <span class="o">=</span> <span class="n">label_column_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">text_column_name</span> <span class="o">=</span> <span class="n">text_column_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vali_data</span> <span class="o">=</span> <span class="n">vali_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">inference_data</span> <span class="o">=</span> <span class="n">inference_datasets</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">uname</span> <span class="o">=</span> <span class="n">uname</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">labels</span> <span class="o">=</span> <span class="n">labels</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer_name</span> <span class="o">=</span> <span class="n">tokenizer_name</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">FastFit</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="si">}</span><span class="s2">0&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s1">&#39;cpu&#39;</span><span class="p">)</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">tokenizer_name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span><span class="s2">&quot;text-classification&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda:0&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ActiveLearning.inference_model">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.ActiveLearning.inference_model">[docs]</a>
+    <span class="k">def</span> <span class="nf">inference_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Load a model from the specified path and perform inference on the inference dataset.</span>
+<span class="sd">        Parameters:</span>
+<span class="sd">            current_model_path (str): Path to the current model for the active learning epoch.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">FastFit</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">current_model_path</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span><span class="s2">&quot;text-classification&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda:0&quot;</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">batch_predict</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Predict categories and scores in batches from the given data.</span>
+<span class="sd">            Parameters:</span>
+<span class="sd">                data (pd.DataFrame): The data to predict on.</span>
+<span class="sd">                batch_size (int): Size of batches to use for predictions.</span>
+<span class="sd">            Returns:</span>
+<span class="sd">                Tuple[List[str], List[float]]: Predicted categories and their scores.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">categories</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">scores</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">batch_size</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Processing batches&quot;</span><span class="p">):</span>
+                <span class="n">end</span> <span class="o">=</span> <span class="n">start</span> <span class="o">+</span> <span class="n">batch_size</span>
+                <span class="n">batch</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span><span class="p">]</span>
+                <span class="n">predictions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span><span class="p">(</span><span class="n">batch</span><span class="p">[</span><span class="s1">&#39;tweet_text&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+                <span class="k">for</span> <span class="n">prediction</span> <span class="ow">in</span> <span class="n">predictions</span><span class="p">:</span>
+                    <span class="n">categories</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prediction</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">])</span>
+                    <span class="n">scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prediction</span><span class="p">[</span><span class="s1">&#39;score&#39;</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">categories</span><span class="p">,</span> <span class="n">scores</span>
+
+        <span class="n">categories</span><span class="p">,</span> <span class="n">scores</span> <span class="o">=</span> <span class="n">batch_predict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inference_data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">inference_data</span><span class="p">[</span><span class="s1">&#39;tweet_category&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">categories</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">inference_data</span><span class="p">[</span><span class="s1">&#39;score&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">scores</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s1">&#39;cpu&#39;</span><span class="p">)</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ActiveLearning.perform_epochs">
+<a class="viewcode-back" href="../module.html#human_annotator_with_hint.ActiveLearning.perform_epochs">[docs]</a>
+    <span class="k">def</span> <span class="nf">perform_epochs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Perform multiple epochs of active learning, including inference, annotation, and training.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">i</span><span class="p">):</span>
+            <span class="n">current_model_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="si">}{</span><span class="n">epoch</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">inference_model</span><span class="p">(</span><span class="n">current_model_path</span><span class="p">)</span>
+
+            <span class="n">subset_for_annotation</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inference_data</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="s1">&#39;score&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">theta</span><span class="p">)</span>
+            <span class="n">annotations</span> <span class="o">=</span> <span class="n">Annotation</span><span class="o">.</span><span class="n">run_annotation</span><span class="p">(</span><span class="n">subset_for_annotation</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">labels</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">text_column_name</span><span class="p">)</span>
+            
+            <span class="k">with</span> <span class="n">ui_events</span><span class="p">()</span> <span class="k">as</span> <span class="n">poll</span><span class="p">:</span>
+                <span class="k">while</span> <span class="p">(</span><span class="n">annotations</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">subset_for_annotation</span><span class="p">):</span>
+                    <span class="n">poll</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>  <span class="c1"># React to UI events (up to 10 at a time)</span>
+                    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+
+            <span class="n">subset_for_annotation</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">label_column_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">annotations</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span>
+            <span class="n">subset_for_annotation</span><span class="p">[</span><span class="s1">&#39;uname&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">uname</span>
+
+            <span class="n">subset_for_annotation_dataset</span> <span class="o">=</span> <span class="n">DatasetDict</span><span class="p">({</span>
+                <span class="s1">&#39;train&#39;</span><span class="p">:</span> <span class="n">Dataset</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">subset_for_annotation</span><span class="p">[[</span><span class="s1">&#39;tweet_text&#39;</span><span class="p">,</span> <span class="s1">&#39;tweet_category&#39;</span><span class="p">]]),</span>
+                <span class="s1">&#39;test&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">vali_data</span><span class="p">,</span>
+                <span class="s1">&#39;validation&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">vali_data</span>
+            <span class="p">})</span>
+
+            <span class="n">training_instance</span> <span class="o">=</span> <span class="n">ModelTraining</span><span class="p">(</span>
+                <span class="n">dataset</span><span class="o">=</span><span class="n">subset_for_annotation_dataset</span><span class="p">,</span>
+                <span class="n">model_name_or_path</span><span class="o">=</span><span class="n">current_model_path</span><span class="p">,</span>
+                <span class="n">label_column_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">label_column_name</span><span class="p">,</span>
+                <span class="n">text_column_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">text_column_name</span><span class="p">,</span>
+                <span class="n">save_path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="si">}{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">load_from_FastFit</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">tokenizer_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer_name</span><span class="p">,</span>
+                <span class="n">num_train_epochs</span><span class="o">=</span><span class="mi">10</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">training_instance</span><span class="o">.</span><span class="n">train_model</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s1">&#39;cpu&#39;</span><span class="p">)</span>
+            <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span></div>
+</div>
+
+<span class="c1"># Main execution block</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">db_handler</span> <span class="o">=</span> <span class="n">MySQLDataHandler</span><span class="p">(</span><span class="s1">&#39;localhost&#39;</span><span class="p">,</span> <span class="s1">&#39;user&#39;</span><span class="p">,</span> <span class="s1">&#39;password&#39;</span><span class="p">,</span> <span class="s1">&#39;database_name&#39;</span><span class="p">)</span>
+    <span class="n">df_trump</span> <span class="o">=</span> <span class="n">db_handler</span><span class="o">.</span><span class="n">fetch_data</span><span class="p">(</span><span class="s2">&quot;SELECT * FROM tweets WHERE tweet_text LIKE &#39;%trump%&#39;&quot;</span><span class="p">)</span>
+    <span class="n">annotations</span> <span class="o">=</span> <span class="n">Annotation</span><span class="o">.</span><span class="n">run_annotation</span><span class="p">(</span><span class="n">df_trump</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;positive&#39;</span><span class="p">,</span> <span class="s1">&#39;negative&#39;</span><span class="p">,</span> <span class="s1">&#39;not relevant&#39;</span><span class="p">])</span>
+
+    <span class="c1"># Assuming `dataset` is already prepared and split</span>
+    <span class="n">training</span> <span class="o">=</span> <span class="n">ModelTraining</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="s2">&quot;bert-base-uncased&quot;</span><span class="p">,</span> <span class="s2">&quot;tweet_category&quot;</span><span class="p">,</span> <span class="s2">&quot;tweet_text&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">training</span><span class="o">.</span><span class="n">train_model</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Accuracy: </span><span class="si">{:.1f}</span><span class="s2">%&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;eval_accuracy&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">100</span><span class="p">))</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">test</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../module.html">My Modules</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, zijian.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 7.3.7</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

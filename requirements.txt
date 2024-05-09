@@ -1,0 +1,14 @@
+pandas
+pigeonXT
+fastfit
+datasets
+mysql-connector-python
+transformers[torch]
+tqdm
+torch
+jupyter-ui-poll
+ipykernel
+ipywidgets
+wandb
+pyarrow
+huggingface_hub

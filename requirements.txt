@@ -8,7 +8,7 @@ tqdm
 torch
 jupyter-ui-poll
 ipykernel
-ipywidgets
+ipywidgets==7.6.5
 wandb
 pyarrow
 huggingface_hub

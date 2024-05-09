@@ -11,7 +11,7 @@ setup(
     long_description_content_type='text/markdown',
     install_requires=[
         'pandas',
-        'pigeonXT',
+        'pigeonXT-jupyter',
         'fastfit',
         'datasets',
         'mysql-connector-python',

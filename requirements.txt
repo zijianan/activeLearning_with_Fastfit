@@ -1,6 +1,6 @@
 pandas
 pigeonXT-jupyter
-fastfit
+fast-fit
 datasets
 mysql-connector-python
 transformers[torch]

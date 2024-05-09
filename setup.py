@@ -12,7 +12,7 @@ setup(
     install_requires=[
         'pandas',
         'pigeonXT-jupyter',
-        'fastfit',
+        'fast-fit',
         'datasets',
         'mysql-connector-python',
         'transformers[torch]',  # Note the [torch] specifier for additional dependencies

@@ -221,3 +221,14 @@ if __name__ == "__main__":
     training = ModelTraining(dataset, "bert-base-uncased", "tweet_category", "tweet_text", 10)
     results = training.train_model()
     print("Accuracy: {:.1f}%".format(results["eval_accuracy"] * 100))
+    active_learning_instance = ActiveLearning(model_name_or_path=save_path, \
+                                  label_column_name='label', \
+                                  text_column_name='modeling_text',\
+                                  theta=10,
+                                  i=3,
+                                  vali_data=dataset["validation"],
+                                  inference_datasets=inference_data,
+                                  tokenizer_name='roberta-large',
+                                  uname=uname,
+                                  labels=['neg','pos'])
+    active_learning_instance.perform_epochs()

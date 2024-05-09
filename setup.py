@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='your_package_name',
+    name='activeLearning_with_Fastfit',
     version='0.1.0',
-    author='Your Name',
-    author_email='your.email@example.com',
+    author='Zijian an',
+    author_email='vilasazj@gmail.com',
     packages=find_packages(),
     description='A package for annotating and training models with a MySQL backend.',
     long_description=open('README.md').read(),

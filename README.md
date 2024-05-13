@@ -8,6 +8,6 @@ CCR (need fill in "gcc/11.2.0 openmpi/4.1.1 pytorch/1.13.1-CUDA-11.8.0" in the j
 module load gcc/11.2.0  
 module load openmpi/4.1.1  
 module load pytorch/1.13.1-CUDA-11.8.0  
-python -m venv /projects/academic/kjoseph/zijian/test_fu
+python -m venv /projects/academic/kjoseph/zijian/test_fu  
 source /projects/academic/kjoseph/zijian/test_fu/bin/activate  
 pip install -r requirements.txt --timeout 100

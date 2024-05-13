@@ -1,6 +1,7 @@
 pandas
 pigeonXT-jupyter
 datasets
+scikit-learn
 mysql-connector-python
 transformers[torch]
 tqdm

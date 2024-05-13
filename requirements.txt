@@ -1,14 +1,11 @@
 pandas
 pigeonXT-jupyter
-fast-fit
 datasets
 mysql-connector-python
 transformers[torch]
 tqdm
-torch
 jupyter-ui-poll
 ipykernel
-ipywidgets==7.6.5
-wandb
+ipywidgets
 pyarrow
 huggingface_hub

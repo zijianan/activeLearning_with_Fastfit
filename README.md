@@ -1,4 +1,4 @@
-git clone https://github.com/zijianan/activeLearning_with_Fastfit.git
+git clone https://github.com/zijianan/activeLearning_with_Fastfit.git  
 conda create --name test_fu python=3.9  
 conda activate test_fu  
 pip install -r requirements.txt --timeout 100  

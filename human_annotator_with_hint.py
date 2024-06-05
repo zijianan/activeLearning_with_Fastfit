@@ -3,11 +3,11 @@ import pigeonXT as pixt
 from fastfit import FastFitTrainer, FastFit
 from datasets import Dataset
 import mysql.connector
-from transformers import AutoTokenizer, pipeline
+from transformers import AutoTokenizer, pipeline, AutoModel
+from scipy.spatial.distance import cosine
 from tqdm import tqdm
 import torch
 from datasets import DatasetDict
-import pandas as pd
 import pigeonXT as pixt
 from typing import List, Optional, Any, Tuple, Dict
 from jupyter_ui_poll import ui_events
@@ -15,6 +15,8 @@ import time
 from mysql.connector.connection import MySQLConnection
 from mysql.connector.cursor import MySQLCursor
 import warnings
+import faiss
+import numpy as np
 # Database handler for MySQL operations
 class MySQLDataHandler:
     def __init__(self, host: str, user: str, password: str, database: str):
@@ -211,6 +213,67 @@ class ActiveLearning:
             self.model = training_instance.train_model()
             self.model.to('cpu')
             torch.cuda.empty_cache()
+
+class SimilaritySearchQuery:
+    def __init__(self, fastfit: bool, model: str, simi_query: List[str], texts:List[str],model_path: str = None, tokenizer_name: str = None):
+        self.fastfit = fastfit
+        self.model = model
+        self.simi_query = simi_query
+        self.texts = texts
+        self.model_path = model_path
+        self.tokenizer_name = tokenizer_name
+    def get_features(self,texts, model_name='princeton-nlp/sup-simcse-bert-base-uncased', batch_size=32):
+        if self.fastfit:
+            model = FastFit.from_pretrained(self.model_path)
+            tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
+        else:
+        # Load pre-trained model tokenizer and model
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = model.to(device)
+
+        # Prepare to collect batches of embeddings
+        all_embeddings = []
+
+        for i in tqdm(range(0, len(texts), batch_size)):
+            # Process each batch
+            batch_texts = texts[i:i + batch_size]
+            inputs = tokenizer(batch_texts, return_tensors='pt', padding=True, truncation=True, max_length=256)
+            inputs = {key: value.to(device) for key, value in inputs.items()}
+
+            with torch.no_grad():
+                outputs = model(**inputs)
+            
+            embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
+            all_embeddings.append(embeddings)
+
+        # Concatenate all batch embeddings
+        all_embeddings = np.vstack(all_embeddings)
+        return all_embeddings
+    
+    def calculate_dist(self,k=100):
+        embeddings = self.get_features(self.texts, batch_size=32)
+        embeddings = np.array(embeddings).squeeze()
+        dimension = embeddings.shape[1]  # Dimension of the vectors
+        index = faiss.IndexFlatL2(dimension)  # L2 distance for similarity
+        index.add(np.array(embeddings).astype('float32')) 
+        # query_vec = self.get_features(self.simi_query)  
+        query_vecs = [self.get_features(self.simi_query).squeeze().astype('float32') for query in self.simi_query]# Convert query to vector
+
+        query_vecs = np.array(query_vecs).reshape(len(queries), -1)
+        # Reshape query_vec to be two-dimensional
+        all_results = []
+        for query, query_vec in zip(self.simi_query, query_vecs):
+            D, I = index.search(query_vec.reshape(1, -1), k)
+            results = [(query, self.texts[idx], distance) for distance, idx in zip(D[0], I[0])]
+            all_results.extend(results)
+
+        # Create DataFrame
+        df = pd.DataFrame(all_results, columns=["Query", "Text", "Distance"]).sort_values(by="Distance")
+        return df
+
+
 # Main execution block
 if __name__ == "__main__":
     db_handler = MySQLDataHandler('localhost', 'user', 'password', 'database_name')

@@ -14,3 +14,4 @@ langchain-community
 langchain
 faiss-gpu
 langchain_openai
+sentence-transformers

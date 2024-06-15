@@ -17,6 +17,40 @@ from mysql.connector.cursor import MySQLCursor
 import warnings
 import faiss
 import numpy as np
+from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.llms import OpenAI
+import getpass
+import os
+import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers.models.mistral.modeling_mistral import MistralForCausalLM
+from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
+from langchain_core.documents import Document
+from langchain.embeddings.huggingface import HuggingFaceEmbeddings
+from langchain.llms import HuggingFacePipeline
+from langchain.embeddings.huggingface import HuggingFaceEmbeddings
+from transformers import (
+  AutoTokenizer, 
+  AutoModelForCausalLM, 
+  BitsAndBytesConfig,
+  pipeline
+)
+from langchain_core.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from langchain.llms import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.runnables import (
+    RunnableBranch,
+    RunnableLambda,
+    RunnableParallel,
+    RunnablePassthrough,
+)
+
+import warnings
+
+
+
 # Database handler for MySQL operations
 class MySQLDataHandler:
     def __init__(self, host: str, user: str, password: str, database: str):
@@ -215,65 +249,180 @@ class ActiveLearning:
             torch.cuda.empty_cache()
 
 class SimilaritySearchQuery:
-    def __init__(self, fastfit: bool, model: str, simi_query: List[str], texts:List[str],model_path: str = None, tokenizer_name: str = None):
+    def __init__(self, fastfit: bool, simi_query: List[str], texts: List[str], model: str = 'princeton-nlp/sup-simcse-bert-base-uncased', model_path: str = None, tokenizer_name: str = None, batch_size: int = 32):
+        """
+        Initializes the TextSimilarityModel class with all required parameters for setting up the model.
+        
+        Parameters:
+        - fastfit: bool, indicates whether to use FastFit model loading strategy.
+        - simi_query: List[str], list of strings containing the query texts.
+        - texts: List[str], list of strings containing the texts to compare against the queries.
+        - model: str, model identifier for Hugging Face Transformers.
+        - model_path: str, optional, path to a pretrained model for FastFit.
+        - tokenizer_name: str, optional, tokenizer identifier for Hugging Face Transformers.
+        - batch_size: int, number of texts to process in each batch during vectorization.
+        """
         self.fastfit = fastfit
         self.model = model
-        self.simi_query = simi_query
+        self.simi_query = [simi_query] if isinstance(simi_query, str) else simi_query
         self.texts = texts
         self.model_path = model_path
-        self.tokenizer_name = tokenizer_name
-    def get_features(self,texts, model_name='princeton-nlp/sup-simcse-bert-base-uncased', batch_size=32):
+        self.tokenizer_name = tokenizer_name if tokenizer_name else model
+        self.batch_size = batch_size
+
+    def get_features(self, texts: List[str]) -> np.ndarray:
+        """
+        Extracts embeddings for the given list of texts using a pretrained model specified during initialization.
+        
+        Parameters:
+        - texts: List[str], a list of text strings from which to extract embeddings.
+        
+        Returns:
+        - A numpy array containing embeddings for each text.
+        """
         if self.fastfit:
             model = FastFit.from_pretrained(self.model_path)
             tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
         else:
-        # Load pre-trained model tokenizer and model
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModel.from_pretrained(model_name)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = model.to(device)
+            tokenizer = AutoTokenizer.from_pretrained(self.model)
+            model = AutoModel.from_pretrained(self.model)
 
-        # Prepare to collect batches of embeddings
+        model.eval()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
+
         all_embeddings = []
 
-        for i in tqdm(range(0, len(texts), batch_size)):
-            # Process each batch
-            batch_texts = texts[i:i + batch_size]
+        for i in tqdm(range(0, len(texts), self.batch_size)):
+            batch_texts = texts[i:i+self.batch_size]
             inputs = tokenizer(batch_texts, return_tensors='pt', padding=True, truncation=True, max_length=256)
             inputs = {key: value.to(device) for key, value in inputs.items()}
 
             with torch.no_grad():
                 outputs = model(**inputs)
-            
+
             embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
             all_embeddings.append(embeddings)
 
-        # Concatenate all batch embeddings
-        all_embeddings = np.vstack(all_embeddings)
-        return all_embeddings
-    
-    def calculate_dist(self,k=100):
-        embeddings = self.get_features(self.texts, batch_size=32)
-        embeddings = np.array(embeddings).squeeze()
-        dimension = embeddings.shape[1]  # Dimension of the vectors
-        index = faiss.IndexFlatL2(dimension)  # L2 distance for similarity
-        index.add(np.array(embeddings).astype('float32')) 
-        # query_vec = self.get_features(self.simi_query)  
-        query_vecs = [self.get_features(self.simi_query).squeeze().astype('float32') for query in self.simi_query]# Convert query to vector
+        return np.vstack(all_embeddings)
 
-        query_vecs = np.array(query_vecs).reshape(len(queries), -1)
-        # Reshape query_vec to be two-dimensional
+    def calculate_dist(self, k=5, return_all=False) -> pd.DataFrame():
+        """
+        Calculates the distance between query embeddings and text embeddings using FAISS.
+        Optionally returns only the top 'k' nearest results for each query or all results.
+        
+        Parameters:
+        - k: int, number of nearest texts to return for each query (default is 5).
+        - return_all: bool, if True, returns all results; otherwise, returns top 'k' results per query.
+        
+        Returns:
+        - A pandas DataFrame containing the query, closest texts, and their corresponding distances.
+        """
+        embeddings = self.get_features(self.texts)
+        query_vecs = self.get_features(self.simi_query)
+
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatL2(dimension)
+        index.add(embeddings.astype('float32'))
+
+        D, I = index.search(query_vecs.astype('float32'), max(k, len(self.texts)))  # Search for the maximum of 'k' or total texts
+
         all_results = []
-        for query, query_vec in zip(self.simi_query, query_vecs):
-            D, I = index.search(query_vec.reshape(1, -1), k)
-            results = [(query, self.texts[idx], distance) for distance, idx in zip(D[0], I[0])]
+        for idx, (distances, indices) in enumerate(zip(D, I)):
+            results = [(self.simi_query[idx], self.texts[i], d) for d, i in zip(distances, indices)]
             all_results.extend(results)
 
-        # Create DataFrame
-        df = pd.DataFrame(all_results, columns=["Query", "Text", "Distance"]).sort_values(by="Distance")
+        df = pd.DataFrame(all_results, columns=["Query", "Text", "Distance"])
+
+        if not return_all:
+            return df.groupby("Query").apply(lambda x: x.nsmallest(k, 'Distance')).reset_index(drop=True)
         return df
+class RAGLLMQuery:
+    """ A class for initializing and querying language models, handling both OpenAI and HuggingFace backends,
+    with optional vector document retrieval using FAISS. """
 
+    def __init__(self, openai: bool, model_name: str, timeout: int = 20, temperature: float = 0.2, max_tokens: int = 512) -> None:
+        """
+        Initializes the RAGLLMQuery object with configuration for the language model and device setup.
+        """
+        self.openai: bool = openai
+        self.model_name: str = model_name
+        self.temperature: float = temperature
+        self.max_tokens: int = max_tokens
+        self.timeout: int = timeout
+        self.device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.llm: Optional[Any] = None  # Could be ChatOpenAI or HuggingFacePipeline, depending on use.
+        self.retriever: Optional[Any] = None  # Specific type depends on the implementation of FAISS.
+        self.prompt: Optional[PromptTemplate] = None
 
+    def model_initial(self) -> None:
+        """ Initializes the language model based on the openai flag. """
+        if self.openai:
+            os.environ["OPENAI_API_KEY"] = getpass.getpass(prompt='Please enter your OPENAI_API_KEY:')
+            self.llm = ChatOpenAI(
+                                model=self.model_name,
+                                temperature=self.temperature,
+                                max_tokens=self.max_tokens,
+                                timeout=self.timeout,
+                                max_retries=2
+                            )
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.padding_side = "right"
+            text_generation_pipeline = pipeline(
+                model=self.model_name,
+                tokenizer=tokenizer,
+                task="text-generation",
+                temperature=self.temperature,
+                repetition_penalty=1.1,
+                return_full_text=True,
+                max_new_tokens=self.max_tokens,
+                device=self.device,
+            )
+            self.llm = HuggingFacePipeline(pipeline=text_generation_pipeline)
+
+    def vector_doc(self, list_of_docs: List[str], def_search_kwargs: Dict[str, int] = {'k': 4}, model_name: str = 'sentence-transformers/all-mpnet-base-v2') -> None:
+        """ Initializes document vector retrieval system using FAISS. """
+        documents__ = [Document(page_content=doc) for doc in list_of_docs]
+        embeddings = HuggingFaceEmbeddings(
+            model_name=model_name,
+            model_kwargs={'device': self.device}
+        )
+        db = FAISS.from_documents(documents__, embeddings)
+        self.retriever = db.as_retriever(search_type="similarity", search_kwargs=def_search_kwargs)
+
+    def prompt_(self, system_prompt: str = "Answer the question based on your understanding on social media platform twitter. Here is context to help:") -> None:
+        """ Configures the prompt template for language model queries. """
+        prompt_template = f"""
+        ### [INST]
+        Instruction: {system_prompt}
+        """ + """
+        {context}
+
+        ### QUESTION:
+        {question}
+
+        [/INST]
+        """
+        self.prompt = PromptTemplate(
+            input_variables=["context", "question"],
+            template=prompt_template,
+        )
+
+    def rag_chain(self, query: str) -> Any:
+        """ Executes a retrieval-augmented generation (RAG) query using the initialized language model and document retriever. """
+        if self.llm is None:
+            self.model_initial()
+        if self.retriever is None:
+            raise Exception("Use RAGLLMQuery.vector_doc(list_of_docs) to have a vector for the retrieval documents")
+        warnings.warn("Currently you are using the default prompt:'Answer the question based on your understanding on social media platform twitter. Here is context to help:' you can customize your prompt by RAGLLMQuery.prompt_(system_prompt='')")
+        self.prompt_()
+        llm_chain = LLMChain(llm=self.llm, prompt=self.prompt)
+        rag_chain = ({"context": self.retriever, "question": RunnablePassthrough()} | llm_chain)
+
+        result = rag_chain.invoke(query)
+        return result
 # Main execution block
 if __name__ == "__main__":
     db_handler = MySQLDataHandler('localhost', 'user', 'password', 'database_name')

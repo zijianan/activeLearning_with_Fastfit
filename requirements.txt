@@ -13,3 +13,4 @@ huggingface_hub
 langchain-community
 langchain
 faiss-gpu
+langchain_openai

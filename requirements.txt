@@ -10,3 +10,6 @@ ipykernel
 ipywidgets
 pyarrow
 huggingface_hub
+langchain-community
+langchain
+faiss-gpu
